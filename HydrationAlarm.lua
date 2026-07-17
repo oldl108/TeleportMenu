@@ -459,6 +459,12 @@ function HA:BuildDrinkPage(p)
   testBtn:SetScript("OnClick", function()
     HA:Notify("测试提醒", "如果屏幕中上方出现这行文字并听到声音，说明提醒功能正常！")
   end)
+
+  -- 作者信息（喝水提醒页面正下方居中）
+  local author = p:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+  author:SetPoint("BOTTOM", p, "BOTTOM", 0, 8)
+  author:SetJustifyH("CENTER")
+  author:SetText("作者：拉面-克苏恩    2026.7.17")
 end
 
 -- 简易记事本：标题 + 内容，保存到列表（带日期），点开可改 / 删

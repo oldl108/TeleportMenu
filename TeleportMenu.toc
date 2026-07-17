@@ -19,7 +19,7 @@
 
 ## Author: Justwait（汉化：拉面-克苏恩）
 ## X-Translator: 拉面-克苏恩
-## Version: 0717.2
+## Version: 0717.3
 ## SavedVariables: TeleportMenuDB
 ## OptionalDeps: Masque
 
