@@ -31,3 +31,4 @@ Data\Data.xml
 Options.lua
 Buttons\Housing.lua
 TeleportMenu.lua
+HydrationAlarm.lua
