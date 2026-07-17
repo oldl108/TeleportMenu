@@ -92,52 +92,23 @@ end
 function HA:CreateReminderFrame()
   if self.reminder then return end
   local f = CreateFrame("Frame", "HydrationAlarmReminder", UIParent)
-  f:SetSize(340, 170)
-  f:SetPoint("TOP", UIParent, "TOP", 0, -40)
+  f:SetSize(640, 100)
+  f:SetPoint("TOP", UIParent, "TOP", 0, -90)
   f:SetFrameStrata("FULLSCREEN_DIALOG")
-  f:EnableMouse(true)
-  f:SetMovable(true)
-  f:RegisterForDrag("LeftButton")
-  f:SetScript("OnDragStart", f.StartMoving)
-  f:SetScript("OnDragStop", f.StopMovingOrSizing)
-  f:SetBackdrop({
-    bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
-    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    edgeSize = 16, tile = false,
-    insets   = { left = 4, right = 4, top = 4, bottom = 4 },
-  })
-  f:SetBackdropColor(0.05, 0.15, 0.25, 0.95)
-  f:SetBackdropBorderColor(0.31, 0.76, 0.97, 1)
+  f:SetToplevel(true)
   f:Hide()
 
-  local icon = f:CreateTexture(nil, "ARTWORK")
-  icon:SetSize(40, 40)
-  icon:SetPoint("TOPLEFT", 14, -14)
-  icon:SetTexture("Interface\\Icons\\INV_Drink_05")
-
-  local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-  title:SetPoint("TOPLEFT", icon, "TOPRIGHT", 8, -2)
-  title:SetText(self.C .. "提醒与闹钟" .. self.R)
-
-  local msg = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  msg:SetPoint("TOPLEFT", icon, "BOTTOMLEFT", 0, -12)
-  msg:SetPoint("RIGHT", f, "RIGHT", -14, 0)
-  msg:SetWordWrap(true)
-  msg:SetJustifyH("LEFT")
-
-  local dismiss = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-  dismiss:SetSize(100, 24)
-  dismiss:SetPoint("BOTTOMLEFT", 14, 12)
-  dismiss:SetText("知道了")
-  dismiss:SetScript("OnClick", function() f:Hide() end)
-
-  local snooze = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-  snooze:SetSize(100, 24)
-  snooze:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 12)
-  snooze:SetText("稍后提醒")
-  snooze:SetScript("OnClick", function() f:Hide(); HA:Snooze() end)
-
-  f.title, f.msg = title, msg
+  -- 纯文字提醒：屏幕中上方一行文字，无背景、无按钮
+  local txt = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  txt:SetPoint("CENTER", f, "CENTER", 0, 0)
+  txt:SetWidth(600)
+  txt:SetJustifyH("CENTER")
+  txt:SetJustifyV("MIDDLE")
+  txt:SetWordWrap(true)
+  txt:SetNonSpaceWrap(true)              -- 中文按字换行
+  txt:SetTextColor(1, 0.92, 0.6, 1)      -- 暖黄色，醒目
+  txt:SetFont(select(1, txt:GetFont()), 20, "OUTLINE")
+  f.txt = txt
   self.reminder = f
 end
 
@@ -165,27 +136,20 @@ function HA:Flash()
   end
 end
 
+-- 纯文字提醒：屏幕中上方显示一行文字，自动隐藏（不再有弹窗/按钮）
 function HA:Notify(titleText, message, soundKey, flash)
   self:CreateReminderFrame()
   local f = self.reminder
-  f.title:SetText(self.C .. (titleText or "提醒与闹钟") .. self.R)
-  f.msg:SetText(message or "")
+  local full = self.C .. (titleText or "提醒") .. self.R .. "：" .. (message or "")
+  f.txt:SetText(full)
   f:Show()
   self:PlayAlarm(soundKey)
   if flash ~= false and DB and DB.reminder.flash then
     self:Flash()
   end
-  self._lastNotify = { title = titleText, msg = message, sound = soundKey, flash = flash }
   local dur = (DB and DB.reminder and DB.reminder.duration) or 15
   if self._hideTimer then self._hideTimer:Cancel() end
   self._hideTimer = C_Timer.After(dur, function() if f:IsShown() then f:Hide() end end)
-end
-
-function HA:Snooze()
-  if not self._lastNotify then return end
-  local n = self._lastNotify
-  self:Print("已暂停提醒，5 分钟后再叫你。")
-  C_Timer.After(300, function() HA:Notify(n.title, n.msg, n.sound, n.flash) end)
 end
 
 ----------------------------------------
@@ -496,9 +460,9 @@ function HA:BuildDrinkPage(p)
   local testBtn = CreateFrame("Button", nil, p, "UIPanelButtonTemplate")
   testBtn:SetSize(160, 26)
   testBtn:SetPoint("TOPLEFT", 12, y)
-  testBtn:SetText("测试提醒弹窗")
+  testBtn:SetText("测试文字提醒")
   testBtn:SetScript("OnClick", function()
-    HA:Notify("测试提醒", "如果看到这个弹窗并听到声音，说明提醒功能正常！")
+    HA:Notify("测试提醒", "如果屏幕中上方出现这行文字并听到声音，说明提醒功能正常！")
   end)
 end
 
@@ -676,7 +640,7 @@ SlashCmdList["HYDRATIONALARM"] = function(input)
   local msg = (input or ""):lower()
   msg = msg:gsub("^%s*(.-)%s*$", "%1")
   if msg == "test" then
-    HA:Notify("测试提醒", "这是一条测试提醒，如果能看到弹窗并听到声音就成功啦！")
+    HA:Notify("测试提醒", "这是一条测试提醒，屏幕中上方会出现这行文字并播放声音！")
   elseif msg == "drink" then
     HA:Notify("该喝水啦", "手动触发：起来喝口水吧！")
   elseif msg == "list" then
