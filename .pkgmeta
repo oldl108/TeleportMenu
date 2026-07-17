@@ -1,5 +1,3 @@
 package-as: TeleportMenu
 
-externals:
-    Libs/AceLocale-3.0: https://repos.wowace.com/wow/ace3/trunk/AceLocale-3.0
-    Libs/LibStub: https://repos.wowace.com/wow/libstub/trunk
+-- 依赖库(LibStub / AceLocale-3.0)已内置在 Libs/ 目录，不再从外部拉取。

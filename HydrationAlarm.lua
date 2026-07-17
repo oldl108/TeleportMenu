@@ -373,97 +373,155 @@ local function MakeCycle(parent, values, getVal, setVal, width)
   return btn
 end
 
-function HA:BuildOptions()
-  local panel = CreateFrame("Frame", "HydrationAlarmOptionsPanel", UIParent)
-  panel.name = self.TITLE
-  self.optionsPanel = panel
-  InterfaceOptions_AddCategory(panel)
+function HA:BuildFrame()
+  if self.frame then return end
+  local f = CreateFrame("Frame", "HydrationAlarmFrame", UIParent, "BackdropTemplate")
+  f:SetSize(480, 560)
+  f:SetPoint("CENTER", UIParent, "CENTER")
+  f:SetFrameStrata("DIALOG")
+  f:EnableMouse(true)
+  f:SetMovable(true)
+  f:RegisterForDrag("LeftButton")
+  f:SetScript("OnDragStart", f.StartMoving)
+  f:SetScript("OnDragStop", f.StopMovingOrSizing)
+  f:SetBackdrop({
+    bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+    edgeSize = 24, tile = false,
+    insets   = { left = 8, right = 8, top = 8, bottom = 8 },
+  })
+  f:SetBackdropColor(0.08, 0.12, 0.18, 0.97)
+  f:SetBackdropBorderColor(0.31, 0.76, 0.97, 1)
+  f:Hide()
 
-  local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-  title:SetPoint("TOPLEFT", 16, -16)
-  title:SetText(self.TITLE .. " 设置（传送菜单 内置小工具）")
+  local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  title:SetPoint("TOP", 0, -12)
+  title:SetText(self.C .. "提醒与闹钟" .. self.R .. "  ·  传送菜单汉化版小工具")
 
+  local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+  close:SetPoint("TOPRIGHT", -4, -4)
+  close:SetScript("OnClick", function() f:Hide() end)
+
+  local tabRow = CreateFrame("Frame", nil, f)
+  tabRow:SetSize(480, 28)
+  tabRow:SetPoint("TOP", 0, -38)
+  self.tabs = {}
+  local function MakeTab(idx, text)
+    local b = CreateFrame("Button", nil, tabRow, "UIPanelButtonTemplate")
+    b:SetSize(150, 24)
+    b:SetText(text)
+    b:SetPoint("TOP", tabRow, "TOP", idx == 1 and -80 or 80, 0)
+    b:SetScript("OnClick", function() HA:SetTab(idx) end)
+    self.tabs[idx] = b
+  end
+  MakeTab(1, "喝水提醒")
+  MakeTab(2, "多组闹钟")
+
+  local content = CreateFrame("Frame", nil, f)
+  content:SetPoint("TOPLEFT", 12, -72)
+  content:SetPoint("BOTTOMRIGHT", -12, 12)
+  self.content = content
+
+  local drinkPage = CreateFrame("Frame", nil, content); drinkPage:SetAllPoints(content)
+  local alarmPage = CreateFrame("Frame", nil, content); alarmPage:SetAllPoints(content)
+  self.drinkPage = drinkPage
+  self.alarmPage = alarmPage
+
+  self:BuildDrinkPage(drinkPage)
+  self:BuildAlarmPage(alarmPage)
+  self.frame = f
+  self:SetTab(1)
+end
+
+function HA:SetTab(idx)
+  if not self.frame then return end
+  self.activeTab = idx
+  for i, b in ipairs(self.tabs) do
+    b:SetNormalFontObject(idx == i and "GameFontNormal" or "GameFontHighlight")
+  end
+  self.drinkPage:SetShown(idx == 1)
+  self.alarmPage:SetShown(idx == 2)
+end
+
+function HA:BuildDrinkPage(p)
   local d = DB.drink
   local r = DB.reminder
+  local y = -10
 
-  -- 一、喝水提醒
-  local sec1 = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  sec1:SetPoint("TOPLEFT", 16, -48)
-  sec1:SetText(self.C .. "一、喝水提醒" .. self.R)
+  local sec1 = p:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  sec1:SetPoint("TOPLEFT", 8, y); sec1:SetText(self.C .. "喝水提醒" .. self.R); y = y - 26
 
-  local y = -70
-  local c1 = MakeCheck(panel, "启用定时喝水提醒（每 N 分钟提醒一次）",
+  local c1 = MakeCheck(p, "启用定时喝水提醒（每 N 分钟提醒一次）",
     function() return d.enabled end, function(v) d.enabled = v end)
-  c1:SetPoint("TOPLEFT", 24, y); y = y - 28
+  c1:SetPoint("TOPLEFT", 12, y); y = y - 28
 
-  local s1 = MakeSlider(panel, "间隔(分钟)", 10, 120, 5,
+  local s1 = MakeSlider(p, "间隔(分钟)", 10, 120, 5,
     function() return d.interval end, function(v) d.interval = math.floor(v) end)
-  s1:SetPoint("TOPLEFT", 24, y); s1:SetWidth(220); y = y - 36
+  s1:SetPoint("TOPLEFT", 12, y); s1:SetWidth(220); y = y - 36
 
-  local c2 = MakeCheck(panel, "仅脱战时提醒（战斗中不弹出）",
+  local c2 = MakeCheck(p, "仅脱战时提醒（战斗中不弹出）",
     function() return d.combatOnly end, function(v) d.combatOnly = v end)
-  c2:SetPoint("TOPLEFT", 24, y); y = y - 28
+  c2:SetPoint("TOPLEFT", 12, y); y = y - 28
 
-  local c3 = MakeCheck(panel, "资源偏低时提醒吃喝（脱战且血/蓝低于阈值）",
+  local c3 = MakeCheck(p, "资源偏低时提醒吃喝（脱战且血/蓝低于阈值）",
     function() return d.lowRes end, function(v) d.lowRes = v end)
-  c3:SetPoint("TOPLEFT", 24, y); y = y - 28
+  c3:SetPoint("TOPLEFT", 12, y); y = y - 28
 
-  local s2 = MakeSlider(panel, "低资源阈值(%)", 10, 90, 5,
+  local s2 = MakeSlider(p, "低资源阈值(%)", 10, 90, 5,
     function() return d.lowPct end, function(v) d.lowPct = math.floor(v) end)
-  s2:SetPoint("TOPLEFT", 24, y); s2:SetWidth(220); y = y - 44
+  s2:SetPoint("TOPLEFT", 12, y); s2:SetWidth(220); y = y - 40
 
-  -- 二、提醒样式
-  local sec2 = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  sec2:SetPoint("TOPLEFT", 16, y); y = y - 22
-  sec2:SetText(self.C .. "二、提醒样式" .. self.R)
+  local sec2 = p:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  sec2:SetPoint("TOPLEFT", 8, y); sec2:SetText(self.C .. "提醒样式" .. self.R); y = y - 26
 
-  local c4 = MakeCheck(panel, "播放声音",
+  local c4 = MakeCheck(p, "播放声音",
     function() return r.sound end, function(v) r.sound = v end)
-  c4:SetPoint("TOPLEFT", 24, y); y = y - 28
+  c4:SetPoint("TOPLEFT", 12, y); y = y - 28
 
-  local sndCycle = MakeCycle(panel, HA.SOUNDS,
+  local sndCycle = MakeCycle(p, HA.SOUNDS,
     function() return r.soundKit end, function(v) r.soundKit = v end, 150)
-  sndCycle:SetPoint("TOPLEFT", 24, y)
-  local sndLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-  sndLabel:SetPoint("LEFT", sndCycle, "RIGHT", 6, 0)
-  sndLabel:SetText("默认提示音")
+  sndCycle:SetPoint("TOPLEFT", 12, y)
+  local sndLabel = p:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+  sndLabel:SetPoint("LEFT", sndCycle, "RIGHT", 6, 0); sndLabel:SetText("默认提示音")
   y = y - 30
 
-  local c5 = MakeCheck(panel, "屏幕边缘闪烁",
+  local c5 = MakeCheck(p, "屏幕边缘闪烁",
     function() return r.flash end, function(v) r.flash = v end)
-  c5:SetPoint("TOPLEFT", 24, y); y = y - 28
+  c5:SetPoint("TOPLEFT", 12, y); y = y - 28
 
-  local s3 = MakeSlider(panel, "自动隐藏(秒)", 5, 60, 5,
+  local s3 = MakeSlider(p, "自动隐藏(秒)", 5, 60, 5,
     function() return r.duration end, function(v) r.duration = math.floor(v) end)
-  s3:SetPoint("TOPLEFT", 24, y); s3:SetWidth(220); y = y - 44
+  s3:SetPoint("TOPLEFT", 12, y); s3:SetWidth(220); y = y - 40
 
-  -- 三、多组闹钟
-  local sec3 = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  sec3:SetPoint("TOPLEFT", 16, y); y = y - 22
-  sec3:SetText(self.C .. "三、多组闹钟" .. self.R)
+  local testBtn = CreateFrame("Button", nil, p, "UIPanelButtonTemplate")
+  testBtn:SetSize(160, 26)
+  testBtn:SetPoint("TOPLEFT", 12, y)
+  testBtn:SetText("测试提醒弹窗")
+  testBtn:SetScript("OnClick", function()
+    HA:Notify("测试提醒", "如果看到这个弹窗并听到声音，说明提醒功能正常！")
+  end)
+end
 
-  self._alarmTopY = y
+function HA:BuildAlarmPage(p)
+  local scroll = CreateFrame("ScrollFrame", nil, p, "UIPanelScrollFrameTemplate")
+  scroll:SetPoint("TOPLEFT", 4, -4)
+  scroll:SetPoint("BOTTOMRIGHT", -24, 4)
+  local inner = CreateFrame("Frame", nil, scroll)
+  scroll:SetScrollChild(inner)
+  inner:SetWidth(420)
+  self.alarmScroll = scroll
+  self.alarmInner = inner
   self:RebuildAlarmList()
 end
 
 function HA:RebuildAlarmList()
-  local panel = self.optionsPanel
-  local topY = self._alarmTopY or -360
+  local inner = self.alarmInner
+  if not inner then return end
 
-  if self.alarmScroll then
-    self.alarmScroll:Hide()
-    self.alarmScroll:SetParent(nil)
-    self.alarmScroll = nil
+  if self.alarmRows then
+    for _, row in ipairs(self.alarmRows) do row:Hide(); row:SetParent(nil) end
   end
-
-  local scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
-  scroll:SetPoint("TOPLEFT", 16, topY)
-  scroll:SetSize(640, 320)
-  local inner = CreateFrame("Frame", nil, scroll)
-  scroll:SetScrollChild(inner)
-  inner:SetWidth(620)
-  self.alarmScroll = scroll
-  self.alarmInner = inner
+  self.alarmRows = {}
 
   local y = 0
   for i, a in ipairs(DB.alarms) do
@@ -483,16 +541,19 @@ function HA:RebuildAlarmList()
     })
     HA:RebuildAlarmList()
   end)
+  tinsert(self.alarmRows, add)
 
   inner:SetHeight(math.max(120, -y + 40))
-  scroll:SetVerticalScroll(0)
-  scroll:UpdateScrollChildRect()
+  if self.alarmScroll then
+    self.alarmScroll:SetVerticalScroll(0)
+    self.alarmScroll:UpdateScrollChildRect()
+  end
 end
 
 function HA:BuildAlarmRow(parent, a, i, y)
-  local rowH = 60
+  local rowH = 64
   local row = CreateFrame("Frame", nil, parent)
-  row:SetSize(620, rowH)
+  row:SetSize(420, rowH)
   row:SetPoint("TOPLEFT", 0, y)
 
   -- 分隔线
@@ -509,26 +570,26 @@ function HA:BuildAlarmRow(parent, a, i, y)
 
   -- 名称
   local nameL = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-  nameL:SetPoint("TOPLEFT", 70, -6); nameL:SetText("名称")
-  local name = MakeEdit(row, 120, 20, a.name)
-  name:SetPoint("TOPLEFT", 70, -20)
+  nameL:SetPoint("TOPLEFT", 60, -6); nameL:SetText("名称")
+  local name = MakeEdit(row, 110, 20, a.name)
+  name:SetPoint("TOPLEFT", 60, -20)
   name:SetScript("OnTextChanged", function() a.name = name:GetText() end)
 
   -- 类型
   local typeL = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-  typeL:SetPoint("TOPLEFT", 200, -6); typeL:SetText("类型")
+  typeL:SetPoint("TOPLEFT", 185, -6); typeL:SetText("类型")
   local typeBtn = MakeCycle(row,
-    { { value = "interval", label = "间隔(分钟)" }, { value = "clock", label = "每日定时" } },
+    { { value = "interval", label = "间隔(分)" }, { value = "clock", label = "每日定时" } },
     function() return a.type end,
-    function(v) a.type = v; HA:RebuildAlarmList() end, 110)
-  typeBtn:SetPoint("TOPLEFT", 200, -20)
+    function(v) a.type = v; HA:RebuildAlarmList() end, 95)
+  typeBtn:SetPoint("TOPLEFT", 185, -20)
 
   -- 参数（间隔分钟 / 每日 HH:MM）
   local paramL = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-  paramL:SetPoint("TOPLEFT", 320, -6)
-  local param = MakeEdit(row, 70, 20,
+  paramL:SetPoint("TOPLEFT", 290, -6)
+  local param = MakeEdit(row, 56, 20,
     a.type == "interval" and tostring(a.interval or 60) or (a.clock or "20:00"))
-  param:SetPoint("TOPLEFT", 320, -20)
+  param:SetPoint("TOPLEFT", 290, -20)
   if a.type == "interval" then
     paramL:SetText("分钟")
     param:SetScript("OnTextChanged", function() a.interval = tonumber(param:GetText()) or 60 end)
@@ -540,12 +601,12 @@ function HA:BuildAlarmRow(parent, a, i, y)
   -- 闪烁
   local fl = MakeCheck(row, "闪烁",
     function() return a.flash end, function(v) a.flash = v end)
-  fl:SetPoint("TOPLEFT", 400, -4)
+  fl:SetPoint("TOPLEFT", 350, -4)
 
   -- 删除
   local del = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-  del:SetSize(60, 22)
-  del:SetPoint("TOPRIGHT", -4, -4)
+  del:SetSize(54, 22)
+  del:SetPoint("TOPRIGHT", -2, -4)
   del:SetText("删除")
   del:SetScript("OnClick", function()
     for j, b in ipairs(DB.alarms) do
@@ -556,32 +617,24 @@ function HA:BuildAlarmRow(parent, a, i, y)
 
   -- 第二行：提示语 + 提示音
   local msgL = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-  msgL:SetPoint("TOPLEFT", 0, -38); msgL:SetText("提示语")
-  local msg = MakeEdit(row, 420, 20, a.msg)
-  msg:SetPoint("TOPLEFT", 50, -36)
+  msgL:SetPoint("TOPLEFT", 0, -40); msgL:SetText("提示语")
+  local msg = MakeEdit(row, 250, 20, a.msg)
+  msg:SetPoint("TOPLEFT", 40, -38)
   msg:SetScript("OnTextChanged", function() a.msg = msg:GetText() end)
 
   local snd = MakeCycle(row, HA.SOUNDS,
-    function() return a.sound end, function(v) a.sound = v end, 130)
-  snd:SetPoint("TOPLEFT", 480, -36)
+    function() return a.sound end, function(v) a.sound = v end, 110)
+  snd:SetPoint("TOPLEFT", 300, -38)
 
+  tinsert(self.alarmRows, row)
   return y - rowH
 end
 
 function HA:OpenOptions()
-  self:Print("正在打开「提醒与闹钟」设置…")
-  local panel = self.optionsPanel
-  if not panel then
-    self:Print("设置面板尚未初始化，请先重载界面（/reload）。")
-    return
-  end
-  if InterfaceOptionsFrame_OpenToCategory then
-    pcall(InterfaceOptionsFrame_OpenToCategory, panel)
-  elseif Settings and Settings.OpenToCategory then
-    pcall(Settings.OpenToCategory, panel)
-  else
-    self:Print("请在游戏内「设置 → 插件 / 插件」里找到「" .. self.TITLE .. "」。")
-  end
+  if not self.frame then self:BuildFrame() end
+  self:Print("已打开「提醒与闹钟」设置窗口。")
+  self.frame:Show()
+  pcall(function() self.frame:Raise() end)
 end
 
 ----------------------------------------
@@ -594,7 +647,7 @@ function HA:Init()
   self:MergeDefaults(root.HA, self.DEFAULTS)
   DB = root.HA
 
-  self:BuildOptions()
+  self:BuildFrame()
 
   local now = GetTime()
   for _, a in ipairs(DB.alarms) do
