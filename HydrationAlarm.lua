@@ -34,7 +34,7 @@ HA.DEFAULTS = {
     interval   = 45,     -- 间隔（分钟）
   },
   reminder = {
-    duration = 15,       -- 文字自动隐藏（秒）
+    duration = 10,       -- 文字自动隐藏（秒）
     sound    = true,     -- 播放声音
     soundKit = "ALARM_CLOCK_WARNING_3",
   },
@@ -113,20 +113,35 @@ function HA:CreateReminderFrame()
   txt:SetTextColor(1, 0.92, 0.6, 1)      -- 暖黄色，醒目
   txt:SetFont(select(1, txt:GetFont()), 20, "OUTLINE")
   f.txt = txt
+
+  -- 自动隐藏：用 OnUpdate 累计时间，稳妥可靠（不依赖 C_Timer.After，避免文字卡在屏幕上不消失）
+  -- 隐藏的 Frame 不会触发 OnUpdate，所以不占 CPU；每次显示时从 0 重新计时。
+  f._hideT   = 0
+  f._hideDur = (DB and DB.reminder and DB.reminder.duration) or 10
+  f:SetScript("OnShow", function(self)
+    self._hideT   = 0
+    self._hideDur = (DB and DB.reminder and DB.reminder.duration) or 10
+  end)
+  f:SetScript("OnUpdate", function(self, elapsed)
+    self._hideT = self._hideT + elapsed
+    if self._hideT >= self._hideDur then
+      self:Hide()
+    end
+  end)
+
   self.reminder = f
 end
 
--- 纯文字提醒：屏幕中上方显示一行文字，自动隐藏（无弹窗/按钮/闪烁）
+-- 纯文字提醒：屏幕中上方显示一行文字，到时自动隐藏（无弹窗/按钮/闪烁）
 function HA:Notify(titleText, message, soundKey)
   self:CreateReminderFrame()
   local f = self.reminder
   local full = self.C .. (titleText or "提醒") .. self.R .. "：" .. (message or "")
   f.txt:SetText(full)
   f:Show()
+  f._hideT   = 0   -- 每次新提醒都从 0 重新倒计时
+  f._hideDur = (DB and DB.reminder and DB.reminder.duration) or 10
   self:PlayAlarm(soundKey)
-  local dur = (DB and DB.reminder and DB.reminder.duration) or 15
-  if self._hideTimer then self._hideTimer:Cancel() end
-  self._hideTimer = C_Timer.After(dur, function() if f:IsShown() then f:Hide() end end)
 end
 
 ----------------------------------------
