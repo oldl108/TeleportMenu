@@ -26,6 +26,20 @@ HA.SOUNDS = {
   { value = "IG_MAINMENU_OPEN",       label = "菜单开启" },
 }
 
+-- 喝水提醒附带的「情绪价值」关怀语：每次随机挑一句，换个心情
+HA.CARE_PHRASES = {
+  "关注健康，关注自己，别让游戏占满你全部的生活～",
+  "站起来伸个懒腰，看看远处，给眼睛和肩膀放个假。",
+  "你比任务更重要。喝口水、喘口气，世界不会因你暂停而崩塌。",
+  "久坐伤身，起来走两步，哪怕只是去接杯水也好。",
+  "记得现实里还有好朋友、好风景，别只盯着屏幕呀。",
+  "对自己好一点，这十分钟属于你，不属于游戏。",
+  "闭眼深呼吸三次，你会发现，游戏之外也很辽阔。",
+  "身体是陪你最久的伙伴，对它温柔点，它才陪你走得更远。",
+  "起来喝口水，顺便和身边的人说句话，比刷副本更暖。",
+  "屏幕里的世界跑不掉，可你的颈椎和眼睛需要现在就被善待。",
+}
+
 -- 默认配置（首次加载时写入 TeleportMenuDB.HA）
 HA.DEFAULTS = {
   drink = {
@@ -43,12 +57,8 @@ HA.DEFAULTS = {
     { name = "做世界任务", enabled = false, type = "interval", interval = 60,  clock = "20:00", msg = "该去做世界任务啦！", sound = "ALARM_CLOCK_WARNING_3" },
     { name = "收菜/邮件",  enabled = false, type = "interval", interval = 120, clock = "12:00", msg = "记得收菜、清邮件～", sound = "ALARM_CLOCK_WARNING_2" },
   },
-  stats = {
-    drinkTotal = 0,      -- 累计喝水提醒次数
-    drinkToday = 0,      -- 今日喝水提醒次数
-    todayKey   = "",     -- 今日日期（用于跨天重置）
-    alarmTotal = 0,      -- 累计闹钟触发次数
-    log        = {},     -- 最近记录：{ t = "时:分", txt = "内容" }
+  notepad = {
+    entries = {},        -- 简易记事本：{ date = "时:分", title = "标题", content = "内容" }
   },
 }
 
@@ -96,7 +106,7 @@ end
 function HA:CreateReminderFrame()
   if self.reminder then return end
   local f = CreateFrame("Frame", "HydrationAlarmReminder", UIParent)
-  f:SetSize(640, 100)
+  f:SetSize(640, 160)
   f:SetPoint("TOP", UIParent, "TOP", 0, -90)
   f:SetFrameStrata("FULLSCREEN_DIALOG")
   f:SetToplevel(true)
@@ -161,23 +171,6 @@ function HA:NowText()
   return string.format("%02d:%02d", t.hour or 0, t.minute or 0)
 end
 
--- 记录触发（用于「记录统计」分页）
-function HA:Record(kind, titleText, message)
-  if not DB or not DB.stats then return end
-  local s = DB.stats
-  local key = self:TodayKey()
-  if s.todayKey ~= key then s.todayKey = key; s.drinkToday = 0 end
-  if kind == "drink" then
-    s.drinkTotal = (s.drinkTotal or 0) + 1
-    s.drinkToday = (s.drinkToday or 0) + 1
-  else
-    s.alarmTotal = (s.alarmTotal or 0) + 1
-  end
-  s.log = s.log or {}
-  tinsert(s.log, 1, { t = self:NowText(), txt = (titleText or "") .. "：" .. (message or "") })
-  while #s.log > 30 do tremove(s.log) end
-end
-
 function HA:CheckDrink()
   local d = DB.drink
   if not d.enabled then return end
@@ -187,15 +180,16 @@ function HA:CheckDrink()
   if not self._lastDrink then self._lastDrink = now end
   if now - self._lastDrink >= d.interval * 60 then
     self._lastDrink = now
-    self:Notify("该喝水啦", "你已经连续玩了 " .. d.interval .. " 分钟，起来喝口水、活动一下筋骨吧！")
-    self:Record("drink", "该喝水啦", "你已经连续玩了 " .. d.interval .. " 分钟，起来喝口水")
+    local mins = d.interval
+    local line1 = "你已经坐着玩了 " .. mins .. " 分钟啦，该站起来喝口水、活动活动筋骨了！"
+    local care  = HA.CARE_PHRASES[math.random(#HA.CARE_PHRASES)]
+    self:Notify("该喝水啦", line1 .. "\n" .. care)
   end
 end
 
 function HA:FireAlarm(a)
   a.lastTrigger = GetTime()
   self:Notify("闹钟 · " .. (a.name or "提醒"), a.msg or "时间到！", a.sound)
-  self:Record("alarm", "闹钟 · " .. (a.name or "提醒"), a.msg or "时间到！")
 end
 
 function HA:CheckClockAlarm(a)
@@ -208,7 +202,6 @@ function HA:CheckClockAlarm(a)
   if curKey == target and self._clockState[a.name] ~= curKey then
     self._clockState[a.name] = curKey
     self:Notify("闹钟 · " .. (a.name or "提醒"), a.msg or "时间到！", a.sound)
-    self:Record("alarm", "闹钟 · " .. (a.name or "提醒"), a.msg or "时间到！")
   elseif curKey ~= target then
     self._clockState[a.name] = nil
   end
@@ -388,7 +381,7 @@ function HA:BuildFrame()
   end
   MakeTab(1, "喝水提醒")
   MakeTab(2, "多组闹钟")
-  MakeTab(3, "记录统计")
+  MakeTab(3, "记事本")
 
   local content = CreateFrame("Frame", nil, f)
   content:SetPoint("TOPLEFT", 12, -72)
@@ -397,14 +390,14 @@ function HA:BuildFrame()
 
   local drinkPage = CreateFrame("Frame", nil, content); drinkPage:SetAllPoints(content)
   local alarmPage = CreateFrame("Frame", nil, content); alarmPage:SetAllPoints(content)
-  local statsPage = CreateFrame("Frame", nil, content); statsPage:SetAllPoints(content)
+  local notePage  = CreateFrame("Frame", nil, content); notePage:SetAllPoints(content)
   self.drinkPage = drinkPage
   self.alarmPage = alarmPage
-  self.statsPage = statsPage
+  self.notePage  = notePage
 
   self:BuildDrinkPage(drinkPage)
   self:BuildAlarmPage(alarmPage)
-  self:BuildStatsPage(statsPage)
+  self:BuildNotepadPage(notePage)
   self.frame = f
   self:SetTab(1)
 end
@@ -417,8 +410,8 @@ function HA:SetTab(idx)
   end
   self.drinkPage:SetShown(idx == 1)
   self.alarmPage:SetShown(idx == 2)
-  self.statsPage:SetShown(idx == 3)
-  if idx == 3 and self.RefreshStats then self:RefreshStats() end
+  self.notePage:SetShown(idx == 3)
+  if idx == 3 and self.RefreshNotes then self:RefreshNotes() end
 end
 
 function HA:BuildDrinkPage(p)
@@ -468,73 +461,147 @@ function HA:BuildDrinkPage(p)
   end)
 end
 
-function HA:BuildStatsPage(p)
+-- 简易记事本：标题 + 内容，保存到列表（带日期），点开可改 / 删
+function HA:BuildNotepadPage(p)
+  DB.notepad = DB.notepad or {}
+  DB.notepad.entries = DB.notepad.entries or {}
+
   local head = p:CreateFontString(nil, "ARTWORK", "GameFontNormal")
   head:SetPoint("TOPLEFT", 8, -14)
-  head:SetText(self.C .. "喝水提醒 / 闹钟 · 记录与统计" .. self.R)
+  head:SetText(self.C .. "简易记事本" .. self.R .. "（带日期，可增 / 改 / 删）")
 
-  local sum = p:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-  sum:SetPoint("TOPLEFT", 8, -48)
-  sum:SetJustifyH("LEFT")
-  sum:SetWidth(440)
-  sum:SetWordWrap(true)
-  self.statsSummary = sum
+  local titleL = p:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+  titleL:SetPoint("TOPLEFT", 8, -44); titleL:SetText("标题")
+  local titleEB = MakeEdit(p, 250, 22, "")
+  titleEB:SetPoint("TOPLEFT", 8, -60)
 
-  local logTitle = p:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  logTitle:SetPoint("TOPLEFT", 8, -128)
-  logTitle:SetText(self.C .. "最近记录（最多 30 条）" .. self.R)
+  local saveBtn = CreateFrame("Button", nil, p, "UIPanelButtonTemplate")
+  saveBtn:SetSize(72, 24); saveBtn:SetPoint("TOPLEFT", 8, -88); saveBtn:SetText("保存")
+  local newBtn = CreateFrame("Button", nil, p, "UIPanelButtonTemplate")
+  newBtn:SetSize(72, 24); newBtn:SetPoint("TOPLEFT", 88, -88); newBtn:SetText("新建")
+  local delBtn = CreateFrame("Button", nil, p, "UIPanelButtonTemplate")
+  delBtn:SetSize(72, 24); delBtn:SetPoint("TOPLEFT", 168, -88); delBtn:SetText("删除")
 
-  local scroll = CreateFrame("ScrollFrame", nil, p, "UIPanelScrollFrameTemplate")
-  scroll:SetPoint("TOPLEFT", 4, -154)
-  scroll:SetPoint("BOTTOMRIGHT", -24, 4)
-  local inner = CreateFrame("Frame", nil, scroll)
-  scroll:SetScrollChild(inner)
-  inner:SetWidth(420)
-  self.statsScroll = scroll
-  self.statsInner = inner
-  self:RefreshStats()
-end
+  local cL = p:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+  cL:SetPoint("TOPLEFT", 8, -118); cL:SetText("内容")
 
-function HA:RefreshStats()
-  if not self.statsSummary then return end
-  local s = DB.stats or {}
-  local today = self:TodayKey()
-  local line = string.format(
-    "累计喝水提醒：%d 次    今日：%d 次\n累计闹钟触发：%d 次    日期：%s",
-    s.drinkTotal or 0,
-    (s.todayKey == today and (s.drinkToday or 0) or 0),
-    s.alarmTotal or 0,
-    (today ~= "" and today or "—"))
-  self.statsSummary:SetText(line)
+  -- 多行内容输入框（ScrollFrame + EditBox；Enter 换行）
+  local cScroll = CreateFrame("ScrollFrame", nil, p, "UIPanelScrollFrameTemplate")
+  cScroll:SetPoint("TOPLEFT", 8, -134)
+  cScroll:SetPoint("BOTTOMRIGHT", -28, 210)
+  local cEB = CreateFrame("EditBox", nil, cScroll)
+  cEB:SetWidth(400)
+  cEB:SetHeight(400)
+  if cEB.SetMultiLine then cEB:SetMultiLine(true) end
+  cEB:SetFontObject("ChatFontNormal")
+  cEB:SetTextInsets(6, 6, 6, 6)
+  cEB:SetScript("OnEscapePressed", function() cEB:ClearFocus() end)
+  cEB:SetScript("OnEnterPressed", function()
+    local t = cEB:GetText()
+    cEB:SetText(t .. "\n")
+    cEB:SetCursorPosition(cEB:GetText():len())
+  end)
+  cScroll:SetScrollChild(cEB)
 
-  if self.statsRows then
-    for _, r in ipairs(self.statsRows) do r:Hide(); r:SetParent(nil) end
+  local listL = p:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  listL:SetPoint("TOPLEFT", 8, -274); listL:SetText(self.C .. "我的记事" .. self.R)
+
+  local listScroll = CreateFrame("ScrollFrame", nil, p, "UIPanelScrollFrameTemplate")
+  listScroll:SetPoint("TOPLEFT", 8, -290)
+  listScroll:SetPoint("BOTTOMRIGHT", -28, 8)
+  local listInner = CreateFrame("Frame", nil, listScroll)
+  listScroll:SetScrollChild(listInner)
+  listInner:SetWidth(420)
+
+  self.noteTitleEB    = titleEB
+  self.noteCEB        = cEB
+  self.noteListScroll = listScroll
+  self.noteListInner  = listInner
+  self.noteEditIdx    = nil
+  self.noteRows       = {}
+
+  local function doSave()
+    local title = titleEB:GetText():gsub("^%s*(.-)%s*$", "%1")
+    local content = cEB:GetText()
+    if title == "" then title = "（无标题）" end
+    local entries = DB.notepad.entries
+    if self.noteEditIdx and entries[self.noteEditIdx] then
+      entries[self.noteEditIdx].title = title
+      entries[self.noteEditIdx].content = content
+    else
+      tinsert(entries, 1, { date = self:NowText(), title = title, content = content })
+    end
+    self.noteEditIdx = nil
+    titleEB:SetText(""); cEB:SetText("")
+    HA:RefreshNotes()
   end
-  self.statsRows = {}
-  local inner = self.statsInner
-  if not inner then return end
-  local y = 0
-  local log = s.log or {}
-  if #log == 0 then
-    local none = inner:CreateFontString(nil, "ARTWORK", "GameFontDisable")
-    none:SetPoint("TOPLEFT", 0, y)
-    none:SetText("（暂无记录，触发提醒后会自动累计）")
-    tinsert(self.statsRows, none)
-  else
-    for _, e in ipairs(log) do
-      local t = inner:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-      t:SetPoint("TOPLEFT", 0, y)
-      t:SetWidth(400)
-      t:SetJustifyH("LEFT")
-      t:SetText("· " .. (e.t or "") .. "    " .. (e.txt or ""))
-      y = y - 18
-      tinsert(self.statsRows, t)
+  local function doNew()
+    self.noteEditIdx = nil
+    titleEB:SetText(""); cEB:SetText("")
+    titleEB:SetFocus()
+  end
+  local function doDel()
+    local entries = DB.notepad.entries
+    if self.noteEditIdx and entries[self.noteEditIdx] then
+      tremove(entries, self.noteEditIdx)
+      self.noteEditIdx = nil
+      titleEB:SetText(""); cEB:SetText("")
+      HA:RefreshNotes()
     end
   end
-  inner:SetHeight(math.max(60, -y + 20))
-  if self.statsScroll then
-    self.statsScroll:SetVerticalScroll(0)
-    self.statsScroll:UpdateScrollChildRect()
+
+  saveBtn:SetScript("OnClick", doSave)
+  newBtn:SetScript("OnClick", doNew)
+  delBtn:SetScript("OnClick", doDel)
+
+  self:RefreshNotes()
+end
+
+-- 点列表里的某条，载入到上方编辑框（可改 / 删 / 再保存）
+function HA:LoadNote(i)
+  local e = DB.notepad and DB.notepad.entries and DB.notepad.entries[i]
+  if not e then return end
+  self.noteEditIdx = i
+  self.noteTitleEB:SetText(e.title or "")
+  self.noteCEB:SetText(e.content or "")
+end
+
+function HA:RefreshNotes()
+  if not self.noteListInner then return end
+  if self.noteRows then
+    for _, r in ipairs(self.noteRows) do r:Hide(); r:SetParent(nil) end
+  end
+  self.noteRows = {}
+  local inner = self.noteListInner
+  local entries = (DB.notepad and DB.notepad.entries) or {}
+  local y = 0
+  if #entries == 0 then
+    local none = inner:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+    none:SetPoint("TOPLEFT", 0, y)
+    none:SetText("（还没有记事，写点什么吧～）")
+    tinsert(self.noteRows, none)
+  else
+    for i, e in ipairs(entries) do
+      local row = CreateFrame("Button", nil, inner)
+      row:SetSize(420, 38)
+      row:SetPoint("TOPLEFT", 0, y)
+      local bg = row:CreateTexture(nil, "BACKGROUND")
+      bg:SetAllPoints(); bg:SetColorTexture(0.16, 0.22, 0.30, 0.7)
+      local dt = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+      dt:SetPoint("TOPLEFT", 8, -4); dt:SetText(e.date or "")
+      dt:SetTextColor(0.7, 0.8, 0.9, 1)
+      local tt = row:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+      tt:SetPoint("TOPLEFT", 8, -19); tt:SetWidth(404); tt:SetJustifyH("LEFT")
+      tt:SetText(e.title or "（无标题）")
+      row:SetScript("OnClick", function() HA:LoadNote(i) end)
+      tinsert(self.noteRows, row)
+      y = y - 42
+    end
+  end
+  inner:SetHeight(math.max(40, -y + 10))
+  if self.noteListScroll then
+    self.noteListScroll:SetVerticalScroll(0)
+    self.noteListScroll:UpdateScrollChildRect()
   end
 end
 
@@ -578,6 +645,15 @@ function HA:RebuildAlarmList()
     HA:RebuildAlarmList()
   end)
   tinsert(self.alarmRows, add)
+
+  local testBtn = CreateFrame("Button", nil, inner, "UIPanelButtonTemplate")
+  testBtn:SetSize(140, 24)
+  testBtn:SetPoint("TOPLEFT", 130, y)
+  testBtn:SetText("测试闹钟提醒")
+  testBtn:SetScript("OnClick", function()
+    HA:Notify("闹钟 · 测试", "这是闹钟测试提醒：屏幕中上方会出现这行文字并播放声音～", "ALARM_CLOCK_WARNING_1")
+  end)
+  tinsert(self.alarmRows, testBtn)
 
   inner:SetHeight(math.max(120, -y + 40))
   if self.alarmScroll then
